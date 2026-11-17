@@ -38,6 +38,15 @@ Submit only some tunes / flavors:
 ./submit.sh -t AR25_20i,AR25_20j -f numu,numubar # comma-separated lists
 ./submit.sh -t 'AR25_20[ij]*' -f '*_NC'          # shell globs (quote them)
 ```
+Split big groups into several jobs (avoids held jobs from memory/disk limits):
+```bash
+./submit.sh -f numu -n 5                         # numu groups -> jobs of <=5 files each
+./submit.sh -f numu -n 5 -m 8GB -d 10GB          # also raise request_memory / request_disk
+```
+Outputs become `<tune>_<flavor>_partNNN.parquet`. `xsec_weight` still divides by the
+total number of files in the group, so just concatenate all parts (glob below).
+Check why jobs were held with `condor_q -hold`, then `condor_rm <cluster>` and resubmit.
+
 Matching: exact, prefix up to `_` (`AR25_20i` → `AR25_20i_01_002`, `numu` → `numu_CC`
 but not `numubar_CC`), or glob. Without `-t`/`-f` everything is submitted.
 

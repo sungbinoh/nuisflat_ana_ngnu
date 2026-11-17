@@ -1,8 +1,8 @@
 #!/bin/bash
-# Condor executable: run_job.sh <tune> <flavor> <tag> <filelist>
+# Condor executable: run_job.sh <tune> <flavor> <tag> <filelist> [n_files_total] [file_offset]
 # Runs on the WN inside $_CONDOR_SCRATCH_DIR; writes <tag>.parquet there,
 # Condor transfers it back (see transfer_output_remaps in submit.sub).
-TUNE=$1; FLAV=$2; TAG=$3; FLIST=$4
+TUNE=$1; FLAV=$2; TAG=$3; FLIST=$4; NTOT=${5:-0}; FOFF=${6:-0}
 
 # venv on shared /ngnu, created once with setup_venv.sh; path passed in by submit.sub
 if [ -z "${VENV:-}" ] || [ ! -f "$VENV/bin/activate" ]; then
@@ -18,5 +18,7 @@ python -c "import uproot, awkward; print('uproot', uproot.__version__, 'awkward'
 
 # input .flat.root files are read directly from /ngnu (shared filesystem)
 mapfile -t FILES < "$FLIST"
-python process_flat.py --tune "$TUNE" --flavor "$FLAV" --out "${TAG}.parquet" "${FILES[@]}"
+echo "files in this job: ${#FILES[@]}  (group total: $NTOT, offset: $FOFF)"
+python process_flat.py --tune "$TUNE" --flavor "$FLAV" --out "${TAG}.parquet" \
+    --n-files-total "$NTOT" --file-offset "$FOFF" "${FILES[@]}"
 exit $?

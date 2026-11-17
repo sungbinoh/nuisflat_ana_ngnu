@@ -1,16 +1,23 @@
 # HTCondor JDS: one job per (tune, flavor) line in jobs.txt
-#   jobs.txt columns:  tune  flavor  tag  filelist
+#   jobs.txt columns:  tune  flavor  tag  filelist  n_files_total  file_offset
 Universe                = vanilla
 getenv                  = False
 JobBatchName            = nuisflat2parquet
 
 # Defaults are relative to the directory you submit from (the repo clone).
-# Override:  condor_submit OUTDIR=/abs/out VENV=/abs/venv submit.sub   (or ./submit.sh -o ... -v ...)
+# Override:  condor_submit OUTDIR=/abs/out VENV=/abs/venv MEMORY=8GB DISK=10GB submit.sub
+#            (or ./submit.sh -o ... -v ... -m ... -d ...)
 if ! defined OUTDIR
   OUTDIR = output
 endif
 if ! defined VENV
   VENV = $ENV(PWD)/.venv
+endif
+if ! defined MEMORY
+  MEMORY = 4GB
+endif
+if ! defined DISK
+  DISK = 4GB
 endif
 
 Log    = htcondor.log
@@ -21,7 +28,7 @@ should_transfer_files   = YES
 when_to_transfer_output = ON_EXIT
 
 Executable = run_job.sh
-Arguments  = "$(tune) $(flavor) $(tag) $Fnx(filelist)"
+Arguments  = "$(tune) $(flavor) $(tag) $Fnx(filelist) $(nfiles) $(offset)"
 Environment = "VENV=$(VENV)"
 
 ### send the python script + this job's file list; ROOT inputs are read from /ngnu
@@ -30,7 +37,7 @@ transfer_output_files   = $(tag).parquet
 transfer_output_remaps  = "$(tag).parquet=$(OUTDIR)/$(tag).parquet"
 
 Request_cpus   = 1
-Request_memory = 4GB
-Request_disk   = 2GB
+Request_memory = $(MEMORY)
+Request_disk   = $(DISK)
 
-Queue tune, flavor, tag, filelist from jobs.txt
+Queue tune, flavor, tag, filelist, nfiles, offset from jobs.txt

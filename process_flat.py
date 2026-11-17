@@ -104,13 +104,18 @@ def main():
     ap.add_argument("--flavor", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--step", default="200 MB", help="uproot chunk size")
+    ap.add_argument("--n-files-total", type=int, default=0,
+                    help="total files in this (tune, flavor) group when it is split over "
+                         "several jobs; used for xsec_weight (default: number of files given)")
+    ap.add_argument("--file-offset", type=int, default=0,
+                    help="index of the first file within the full group (for file_idx)")
     ap.add_argument("files", nargs="+")
     a = ap.parse_args()
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     tmp = a.out + ".tmp"
     writer = None
-    n_files = len(a.files)
+    n_files = a.n_files_total if a.n_files_total > 0 else len(a.files)
     n_tot = 0
     for fi, f in enumerate(a.files):
         with uproot.open(f) as rf:
@@ -119,13 +124,13 @@ def main():
             offset = 0
             step = int(a.step) if a.step.isdigit() else a.step
             for ev in t.iterate(br, step_size=step):
-                tab = process_chunk(ev, fi, n_files, a.tune, a.flavor, offset)
+                tab = process_chunk(ev, a.file_offset + fi, n_files, a.tune, a.flavor, offset)
                 offset += len(ev)
                 if writer is None:
                     writer = pq.ParquetWriter(tmp, tab.schema, compression="snappy")
                 writer.write_table(tab)
                 n_tot += tab.num_rows
-        print(f"[{fi+1}/{n_files}] {f}  ({offset} events)", flush=True)
+        print(f"[{fi+1}/{len(a.files)}] {f}  ({offset} events)", flush=True)
     if writer is not None:
         writer.close()
         os.replace(tmp, a.out)   # atomic: no half-written parquet on failure
