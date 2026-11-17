@@ -1,14 +1,15 @@
 #!/bin/bash
-# Create the analysis venv on the shared /ngnu filesystem (run once, on the UI).
-# Worker nodes run the same OS (AlmaLinux9), so they can use this venv directly.
-#   ./setup_venv.sh [VENV_PATH]
+# Create the analysis venv (run once, on the UI).
+# Put it on the shared /ngnu filesystem so the worker nodes (same OS, AlmaLinux9) can use it.
+#   ./setup_venv.sh [VENV_PATH]        default: <repo>/.venv
 set -euo pipefail
-VENV=${1:-/ngnu/home/sungbino/venvs/nuisflat}
+REPO=$(cd "$(dirname "$0")" && pwd)
+VENV=$(realpath -m "${1:-${VENV:-$REPO/.venv}}")
 PY=${PYTHON:-/usr/bin/python3}     # system python, present on UI and WNs
 
 echo "python: $($PY --version)  ->  venv: $VENV"
 $PY -m venv "$VENV"
 source "$VENV/bin/activate"
 pip install --upgrade pip
-pip install -r "$(dirname "$0")/requirements.txt"
+pip install -r "$REPO/requirements.txt"
 python -c "import uproot, awkward, pyarrow, pandas; print('OK uproot', uproot.__version__, 'awkward', awkward.__version__)"

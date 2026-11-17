@@ -9,12 +9,20 @@ Flavor: taken from the filename prefix, e.g. 14_1000180400_CC_... -> numu_CC.
         Falls back to a directory name like numu / numubar / nue / nuebar.
 
 Usage:
-    python make_joblist.py --indir /ngnu/home/sungbino/generators/res_studies/genie_comparisons
+    python make_joblist.py                    # shared samples (DEFAULT_INDIR)
+    python make_joblist.py --indir /my/flat   # or your own samples
+                                              # (or set NUISFLAT_DIR)
 """
 import argparse
+import os
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
+
+# Shared input samples (read-only for other users)
+DEFAULT_INDIR = os.environ.get(
+    "NUISFLAT_DIR", "/ngnu/home/sungbino/generators/res_studies/genie_comparisons")
 
 PDG2NAME = {"14": "numu", "-14": "numubar", "12": "nue", "-12": "nuebar",
             "16": "nutau", "-16": "nutaubar"}
@@ -37,13 +45,26 @@ def classify(path: Path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--indir", required=True)
+    ap.add_argument("--indir", default=DEFAULT_INDIR,
+                    help=f"top dir to scan for *.flat.root (default: {DEFAULT_INDIR})")
     ap.add_argument("--jobs", default="jobs.txt")
     a = ap.parse_args()
 
+    if not os.access(a.indir, os.R_OK | os.X_OK):
+        sys.exit(f"ERROR: cannot read {a.indir} (ask the owner for read access)")
+    print(f"scanning {a.indir}")
+
     groups = defaultdict(list)
+    unreadable = []
     for f in sorted(Path(a.indir).rglob("*.flat.root")):
+        if not os.access(f, os.R_OK):
+            unreadable.append(f)
+            continue
         groups[classify(f)].append(str(f.resolve()))
+    if unreadable:
+        print(f"WARNING: skipped {len(unreadable)} unreadable files, e.g. {unreadable[0]}")
+    if not groups:
+        sys.exit("ERROR: no readable *.flat.root files found")
 
     flist_dir = Path("filelists").resolve()
     flist_dir.mkdir(exist_ok=True)

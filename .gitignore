@@ -9,3 +9,5 @@ htcondor.log
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+output/
+.venv/
