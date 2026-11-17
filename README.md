@@ -31,12 +31,23 @@ Options (relative paths are w.r.t. your current directory):
 export NUISFLAT_DIR=<flat/tree/dir>  # same as -i, persistent for your shell
 ```
 
+Submit only some tunes / flavors:
+```bash
+./submit.sh -l                                   # list available tune/flavor groups (no submit)
+./submit.sh -t AR25_20i -f numu                  # one tune, one flavor
+./submit.sh -t AR25_20i,AR25_20j -f numu,numubar # comma-separated lists
+./submit.sh -t 'AR25_20[ij]*' -f '*_NC'          # shell globs (quote them)
+```
+Matching: exact, prefix up to `_` (`AR25_20i` → `AR25_20i_01_002`, `numu` → `numu_CC`
+but not `numubar_CC`), or glob. Without `-t`/`-f` everything is submitted.
+
 ## Step by step (what submit.sh does)
 
 ```bash
 ./setup_venv.sh                  # 1. one-time: venv in ./.venv (uproot, awkward, pyarrow, pandas)
 source .venv/bin/activate
 python make_joblist.py           # 2. group inputs by (tune, flavor) -> jobs.txt + filelists/
+                                 #    (add --tune/--flavor to select, --list to just look)
 cat jobs.txt                     #    check tune/flavor parsing
 mkdir -p output job_log
 condor_submit submit.sub         # 3. submit from the repo dir (OUTDIR=./output, VENV=./.venv)
