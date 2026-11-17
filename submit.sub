@@ -1,8 +1,10 @@
 # HTCondor JDS: one job per (tune, flavor) line in jobs.txt
 #   jobs.txt columns:  tune  flavor  tag  filelist
 Universe                = vanilla
+getenv                  = False
 JobBatchName            = nuisflat2parquet
 OUTDIR                  = /ngnu/home/sungbino/generators/res_studies/parquet
+VENV                    = /ngnu/home/sungbino/venvs/nuisflat
 
 Log    = htcondor.log
 Output = job_log/$(Cluster)/$(tag).out
@@ -13,6 +15,7 @@ when_to_transfer_output = ON_EXIT
 
 Executable = run_job.sh
 Arguments  = "$(tune) $(flavor) $(tag) $Fnx(filelist)"
+Environment = "VENV=$(VENV)"
 
 ### send the python script + this job's file list; ROOT inputs are read from /ngnu
 transfer_input_files    = process_flat.py, $(filelist)

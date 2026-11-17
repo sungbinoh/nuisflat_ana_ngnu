@@ -4,15 +4,19 @@
 # Condor transfers it back (see transfer_output_remaps in submit.sub).
 TUNE=$1; FLAV=$2; TAG=$3; FLIST=$4
 
-# AlmaLinux9 WN: LCG view provides python3 + uproot + awkward + pyarrow + pandas
-source /cvmfs/sft.cern.ch/lcg/views/LCG_107/x86_64-el9-gcc11-opt/setup.sh
+# venv on shared /ngnu, created once with setup_venv.sh (override via VENV in submit.sub)
+VENV=${VENV:-/ngnu/home/sungbino/venvs/nuisflat}
+if [ ! -f "$VENV/bin/activate" ]; then
+    echo "ERROR: venv not found at $VENV (run setup_venv.sh on the UI first)" >&2
+    exit 2
+fi
+source "$VENV/bin/activate"
 
 cd "$_CONDOR_SCRATCH_DIR"
-echo "host=$(hostname)  tune=$TUNE  flavor=$FLAV  scratch=$PWD"
-python3 -c "import uproot, awkward, pyarrow; print('uproot', uproot.__version__, 'awkward', awkward.__version__)"
+echo "host=$(hostname)  tune=$TUNE  flavor=$FLAV  scratch=$PWD  python=$(which python)"
+python -c "import uproot, awkward; print('uproot', uproot.__version__, 'awkward', awkward.__version__)"
 
 # input .flat.root files are read directly from /ngnu (shared filesystem)
 mapfile -t FILES < "$FLIST"
-python3 process_flat.py --tune "$TUNE" --flavor "$FLAV" --out "${TAG}.parquet" "${FILES[@]}"
-RESULT=$?
-exit $RESULT
+python process_flat.py --tune "$TUNE" --flavor "$FLAV" --out "${TAG}.parquet" "${FILES[@]}"
+exit $?

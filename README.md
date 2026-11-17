@@ -3,17 +3,19 @@
 ```bash
 WORK=/ngnu/home/sungbino/generators/res_studies/parquet_jobs
 mkdir -p $WORK /ngnu/home/sungbino/generators/res_studies/parquet && cd $WORK
-# copy process_flat.py make_joblist.py run_job.sh submit.sub here
-chmod +x run_job.sh
+chmod +x run_job.sh setup_venv.sh
+
+# 0) one-time: create the python venv on /ngnu (visible from the WNs)
+./setup_venv.sh                    # default: /ngnu/home/sungbino/venvs/nuisflat
 
 # 1) group files by (tune, flavor) -> jobs.txt + filelists/
-python3 make_joblist.py --indir /ngnu/home/sungbino/generators/res_studies/genie_comparisons
+python make_joblist.py --indir /ngnu/home/sungbino/generators/res_studies/genie_comparisons
 cat jobs.txt                       # check tune/flavor parsing before submitting
 
 # 2) (optional) smoke test one group on the UI with a few files
-source /cvmfs/sft.cern.ch/lcg/views/LCG_107/x86_64-el9-gcc11-opt/setup.sh
+source /ngnu/home/sungbino/venvs/nuisflat/bin/activate
 read T F TAG FL < jobs.txt
-python3 process_flat.py --tune $T --flavor $F --out test.parquet $(head -2 $FL)
+python process_flat.py --tune $T --flavor $F --out test.parquet $(head -2 $FL)
 
 # 3) submit
 mkdir -p job_log
@@ -30,6 +32,9 @@ df = pd.concat(map(pd.read_parquet, glob.glob(".../parquet/*.parquet")), ignore_
 ```
 
 Notes
+- The venv path is set in two places: `VENV` in submit.sub (passed to the job) and the
+  argument to setup_venv.sh. If the WN's `/usr/bin/python3` differs from the UI's, rebuild the
+  venv with `PYTHON=<python on both> ./setup_venv.sh`.
 - `xsec_weight = fScaleFactor * Weight / n_files` — fScaleFactor is per file, so it must
   be divided by the number of files merged into a channel. Use this for xsec histograms.
 - Selection is unchanged from the notebook: events with >=1 muon only (the
