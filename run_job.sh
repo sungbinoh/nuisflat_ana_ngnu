@@ -4,10 +4,10 @@
 # Condor transfers it back (see transfer_output_remaps in submit.sub).
 TUNE=$1; FLAV=$2; TAG=$3; FLIST=$4
 
-# venv on shared /ngnu, created once with setup_venv.sh (override via VENV in submit.sub)
-VENV=${VENV:-/ngnu/home/sungbino/venvs/nuisflat}
-if [ ! -f "$VENV/bin/activate" ]; then
-    echo "ERROR: venv not found at $VENV (run setup_venv.sh on the UI first)" >&2
+# venv on shared /ngnu, created once with setup_venv.sh; path passed in by submit.sub
+if [ -z "${VENV:-}" ] || [ ! -f "$VENV/bin/activate" ]; then
+    echo "ERROR: venv not found at '${VENV:-<unset>}' (run setup_venv.sh on the UI first;" >&2
+    echo "       it must be on a filesystem the worker nodes can see, e.g. /ngnu)" >&2
     exit 2
 fi
 source "$VENV/bin/activate"

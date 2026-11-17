@@ -3,8 +3,15 @@
 Universe                = vanilla
 getenv                  = False
 JobBatchName            = nuisflat2parquet
-OUTDIR                  = /ngnu/home/sungbino/generators/res_studies/parquet
-VENV                    = /ngnu/home/sungbino/venvs/nuisflat
+
+# Defaults are relative to the directory you submit from (the repo clone).
+# Override:  condor_submit OUTDIR=/abs/out VENV=/abs/venv submit.sub   (or ./submit.sh -o ... -v ...)
+if ! defined OUTDIR
+  OUTDIR = output
+endif
+if ! defined VENV
+  VENV = $ENV(PWD)/.venv
+endif
 
 Log    = htcondor.log
 Output = job_log/$(Cluster)/$(tag).out

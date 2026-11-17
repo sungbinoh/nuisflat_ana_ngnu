@@ -9,18 +9,44 @@ Flavor: taken from the filename prefix, e.g. 14_1000180400_CC_... -> numu_CC.
         Falls back to a directory name like numu / numubar / nue / nuebar.
 
 Usage:
-    python make_joblist.py --indir /ngnu/home/sungbino/generators/res_studies/genie_comparisons
+    python make_joblist.py                    # shared samples (DEFAULT_INDIR)
+    python make_joblist.py --indir /my/flat   # or your own samples
+                                              # (or set NUISFLAT_DIR)
+    python make_joblist.py --list             # show available tune/flavor groups only
+    python make_joblist.py --tune AR25_20i --flavor numu,numubar
+        --tune / --flavor take comma-separated values; each matches exactly,
+        as a prefix up to "_" (AR25_20i -> AR25_20i_01_002, numu -> numu_CC
+        but not numubar_CC), or as a shell glob (AR25_20[ij]*, *_NC).
 """
 import argparse
+import fnmatch
+import os
 import re
+import sys
 from collections import defaultdict
 from pathlib import Path
+
+# Shared input samples (read-only for other users)
+DEFAULT_INDIR = os.environ.get(
+    "NUISFLAT_DIR", "/ngnu/home/sungbino/generators/res_studies/genie_comparisons")
 
 PDG2NAME = {"14": "numu", "-14": "numubar", "12": "nue", "-12": "nuebar",
             "16": "nutau", "-16": "nutaubar"}
 TUNE_RE = re.compile(r"(AR2\d_20[a-z]_\d{2}_\d{3})")
 FILE_RE = re.compile(r"^(-?1[246])_\d+_(CC|NC)")
 DIR_FLAVORS = {"numu", "numubar", "nue", "nuebar", "nutau", "nutaubar"}
+
+
+def matches(value, patterns):
+    """True if value matches any pattern (exact, '<pattern>_' prefix, or glob)."""
+    if not patterns:
+        return True
+    return any(value == p or value.startswith(p + "_") or fnmatch.fnmatchcase(value, p)
+               for p in patterns)
+
+
+def split_csv(s):
+    return [x.strip() for x in s.split(",") if x.strip()] if s else []
 
 
 def classify(path: Path):
@@ -37,13 +63,45 @@ def classify(path: Path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--indir", required=True)
+    ap.add_argument("--indir", default=DEFAULT_INDIR,
+                    help=f"top dir to scan for *.flat.root (default: {DEFAULT_INDIR})")
     ap.add_argument("--jobs", default="jobs.txt")
+    ap.add_argument("--tune", default="", help="comma-separated tune selection")
+    ap.add_argument("--flavor", default="", help="comma-separated flavor selection")
+    ap.add_argument("--list", action="store_true",
+                    help="only print the available (tune, flavor) groups")
     a = ap.parse_args()
 
+    if not os.access(a.indir, os.R_OK | os.X_OK):
+        sys.exit(f"ERROR: cannot read {a.indir} (ask the owner for read access)")
+    print(f"scanning {a.indir}")
+
     groups = defaultdict(list)
+    unreadable = []
     for f in sorted(Path(a.indir).rglob("*.flat.root")):
+        if not os.access(f, os.R_OK):
+            unreadable.append(f)
+            continue
         groups[classify(f)].append(str(f.resolve()))
+    if unreadable:
+        print(f"WARNING: skipped {len(unreadable)} unreadable files, e.g. {unreadable[0]}")
+    if not groups:
+        sys.exit("ERROR: no readable *.flat.root files found")
+
+    if a.list:
+        print(f"{'tune':20s} {'flavor':14s} {'files':>5s}")
+        for (tune, flav), files in sorted(groups.items()):
+            print(f"{tune:20s} {flav:14s} {len(files):5d}")
+        return
+
+    tunes, flavors = split_csv(a.tune), split_csv(a.flavor)
+    groups = {k: v for k, v in groups.items()
+              if matches(k[0], tunes) and matches(k[1], flavors)}
+    if not groups:
+        sys.exit(f"ERROR: no groups match --tune '{a.tune}' --flavor '{a.flavor}' "
+                 "(see --list)")
+    if tunes or flavors:
+        print(f"selection: tune={tunes or 'all'} flavor={flavors or 'all'}")
 
     flist_dir = Path("filelists").resolve()
     flist_dir.mkdir(exist_ok=True)
