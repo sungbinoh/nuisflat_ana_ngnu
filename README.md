@@ -18,7 +18,8 @@ Input samples (read-only) are found in this order:
 cd <any/dir/on/ngnu>                   # e.g. /ngnu/home/$USER/work
 git clone https://github.com/sungbinoh/nuisflat_ana_ngnu.git && cd nuisflat_ana_ngnu
 
-./submit.sh                      # creates .venv once, makes jobs.txt, submits
+source setup.sh                  # creates/activates .venv/venv_nuisflat_ana39 (python3.9)
+./submit.sh                      # makes jobs.txt and submits
 condor_q                         # held? -> condor_q -better-analyze <id>
 ls output/                       # <tune>_<flavor>.parquet  (inside this clone)
 ```
@@ -38,25 +39,39 @@ Submit only some tunes / flavors:
 ./submit.sh -t AR25_20i,AR25_20j -f numu,numubar # comma-separated lists
 ./submit.sh -t 'AR25_20[ij]*' -f '*_NC'          # shell globs (quote them)
 ```
+Split big groups into several jobs (avoids held jobs from memory/disk limits):
+```bash
+./submit.sh -f numu -n 5                         # numu groups -> jobs of <=5 files each
+./submit.sh -f numu -n 5 -m 8GB -d 10GB          # also raise request_memory / request_disk
+```
+Outputs become `<tune>_<flavor>_partNNN.parquet`. `xsec_weight` still divides by the
+total number of files in the group, so just concatenate all parts (glob below).
+Check why jobs were held with `condor_q -hold`, then `condor_rm <cluster>` and resubmit.
+A hold saying the output parquet is missing means python failed: see `job_log/<cluster>/<tag>.err`.
+
+Empty/corrupt input files (no `FlatTree_VARS`, 0 entries) are dropped by `make_joblist.py`
+and listed in `bad_files.txt`, so they don't crash jobs and aren't counted in
+`xsec_weight`. Re-copy or regenerate them if you need them. `--no-check` skips this check.
+
 Matching: exact, prefix up to `_` (`AR25_20i` → `AR25_20i_01_002`, `numu` → `numu_CC`
 but not `numubar_CC`), or glob. Without `-t`/`-f` everything is submitted.
 
 ## Step by step (what submit.sh does)
 
 ```bash
-./setup_venv.sh                  # 1. one-time: venv in ./.venv (uproot, awkward, pyarrow, pandas)
-source .venv/bin/activate
+source setup.sh                  # 1. venv .venv/venv_nuisflat_ana39 (created on first use,
+                                 #    requirements.txt installed if missing), activated
 python make_joblist.py           # 2. group inputs by (tune, flavor) -> jobs.txt + filelists/
                                  #    (add --tune/--flavor to select, --list to just look)
 cat jobs.txt                     #    check tune/flavor parsing
 mkdir -p output job_log
-condor_submit submit.sub         # 3. submit from the repo dir (OUTDIR=./output, VENV=./.venv)
+condor_submit submit.sub         # 3. submit from the repo dir (OUTDIR=./output, VENV=./.venv/venv_nuisflat_ana39)
 # condor_submit OUTDIR=<abs/out> VENV=<abs/venv> submit.sub   # other locations
 ```
 
 Smoke test one group on the UI:
 ```bash
-source .venv/bin/activate
+source setup.sh
 read T F TAG FL < jobs.txt
 python process_flat.py --tune $T --flavor $F --out test.parquet $(head -2 $FL)
 ```
@@ -81,7 +96,8 @@ unreadable files.
 
 ## Notes
 - The venv is built with /usr/bin/python3 on the UI; the WNs must have the same python
-  (job log prints the python path). Otherwise rebuild with `PYTHON=<python on both> ./setup_venv.sh`.
+  (job log prints the python path). Otherwise rebuild with `rm -rf .venv && PYTHON=<python on both> source setup.sh`.
+  The venv cannot be moved: after moving/renaming the clone, `rm -rf .venv && source setup.sh`.
 - `xsec_weight = fScaleFactor * Weight / n_files` — fScaleFactor is per file, so it must
   be divided by the number of files merged into a channel. Use this for xsec histograms.
 - Selection: events with >=1 muon only. `n_protons_50MeV`, `n_pions_30MeV` are stored so

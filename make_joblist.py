@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Scan the copied tree for *.flat.root, group by (tune, flavor), and write
-  jobs.txt          one line per Condor job:  tune flavor tag filelist
+  jobs.txt          one line per Condor job:
+                    tune flavor tag filelist n_files_total file_offset
   filelists/*.txt   the input files of each group
 
 Tune  : taken from the path (AR2x_20?_xx_xxx).
@@ -17,6 +18,9 @@ Usage:
         --tune / --flavor take comma-separated values; each matches exactly,
         as a prefix up to "_" (AR25_20i -> AR25_20i_01_002, numu -> numu_CC
         but not numubar_CC), or as a shell glob (AR25_20[ij]*, *_NC).
+    python make_joblist.py --flavor numu --files-per-job 5
+        split each group into jobs of at most 5 files -> <tag>_partNNN.parquet
+        (xsec_weight still uses the total number of files in the group)
 """
 import argparse
 import fnmatch
@@ -49,6 +53,17 @@ def split_csv(s):
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
 
 
+def check_file(path, tree="FlatTree_VARS"):
+    """Return None if the file has a non-empty flat tree, else a reason string."""
+    import uproot
+    try:
+        with uproot.open(path) as f:
+            n = f[tree].num_entries
+        return None if n > 0 else "0 entries"
+    except Exception as e:
+        return f"{type(e).__name__}: {str(e).splitlines()[0]}"
+
+
 def classify(path: Path):
     m = TUNE_RE.search(str(path))
     tune = m.group(1) if m else "unknown"
@@ -68,6 +83,10 @@ def main():
     ap.add_argument("--jobs", default="jobs.txt")
     ap.add_argument("--tune", default="", help="comma-separated tune selection")
     ap.add_argument("--flavor", default="", help="comma-separated flavor selection")
+    ap.add_argument("--files-per-job", type=int, default=0,
+                    help="split each group into jobs of at most N files (0 = one job per group)")
+    ap.add_argument("--no-check", action="store_true",
+                    help="skip opening each file to drop empty/corrupt ones (faster)")
     ap.add_argument("--list", action="store_true",
                     help="only print the available (tune, flavor) groups")
     a = ap.parse_args()
@@ -100,19 +119,52 @@ def main():
     if not groups:
         sys.exit(f"ERROR: no groups match --tune '{a.tune}' --flavor '{a.flavor}' "
                  "(see --list)")
+
+    # drop empty/corrupt files so they neither crash jobs nor bias xsec_weight
+    if not a.no_check:
+        try:
+            import uproot  # noqa: F401
+        except ImportError:
+            print("WARNING: uproot not available, cannot check files (activate the venv)")
+            a.no_check = True
+    if not a.no_check:
+        n_all = sum(len(v) for v in groups.values())
+        print(f"checking {n_all} files (use --no-check to skip) ...", flush=True)
+        bad = []
+        for k in list(groups):
+            good = []
+            for f in groups[k]:
+                why = check_file(f)
+                (bad.append((f, why)) if why else good.append(f))
+            groups[k] = good
+        groups = {k: v for k, v in groups.items() if v}
+        if bad:
+            Path("bad_files.txt").write_text("".join(f"{f}\t{w}\n" for f, w in bad))
+            print(f"WARNING: dropped {len(bad)} empty/corrupt files -> bad_files.txt")
+            for f, w in bad[:5]:
+                print(f"   {f}  ({w})")
+        if not groups:
+            sys.exit("ERROR: no valid files left")
     if tunes or flavors:
         print(f"selection: tune={tunes or 'all'} flavor={flavors or 'all'}")
 
     flist_dir = Path("filelists").resolve()
     flist_dir.mkdir(exist_ok=True)
+    n_jobs = 0
     with open(a.jobs, "w") as jf:
         for (tune, flav), files in sorted(groups.items()):
-            tag = f"{tune}_{flav}"
-            fl = flist_dir / f"{tag}.txt"
-            fl.write_text("\n".join(files) + "\n")
-            jf.write(f"{tune} {flav} {tag} {fl}\n")
-            print(f"{tag:40s} {len(files):5d} files")
-    print(f"\n{len(groups)} jobs -> {a.jobs}")
+            base = f"{tune}_{flav}"
+            n = len(files)
+            size = a.files_per_job if a.files_per_job > 0 else n
+            chunks = [files[i:i + size] for i in range(0, n, size)]
+            for ic, chunk in enumerate(chunks):
+                tag = base if len(chunks) == 1 else f"{base}_part{ic:03d}"
+                fl = flist_dir / f"{tag}.txt"
+                fl.write_text("\n".join(chunk) + "\n")
+                jf.write(f"{tune} {flav} {tag} {fl} {n} {ic * size}\n")
+                n_jobs += 1
+            print(f"{base:40s} {n:5d} files -> {len(chunks):4d} job(s)")
+    print(f"\n{n_jobs} jobs -> {a.jobs}")
     if any(k[1] == "unknown" or k[0] == "unknown" for k in groups):
         print("WARNING: some files could not be classified; check filelists/*unknown*")
 
