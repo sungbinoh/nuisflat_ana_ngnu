@@ -11,7 +11,7 @@ if ! defined OUTDIR
   OUTDIR = output
 endif
 if ! defined VENV
-  VENV = $ENV(PWD)/.venv
+  VENV = $ENV(PWD)/.venv/venv_nuisflat_ana39
 endif
 if ! defined MEMORY
   MEMORY = 4GB

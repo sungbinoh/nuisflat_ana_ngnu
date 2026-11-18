@@ -9,7 +9,7 @@
 # Relative paths are taken w.r.t. your current directory.
 set -euo pipefail
 REPO=$(cd "$(dirname "$0")" && pwd)
-INDIR=""; TUNE=""; FLAVOR=""; LIST=0; NPER=0; MEMORY=4GB; DISK=4GB; OUTDIR="$REPO/output"; VENV="${VENV:-$REPO/.venv}"
+INDIR=""; TUNE=""; FLAVOR=""; LIST=0; NPER=0; MEMORY=4GB; DISK=4GB; OUTDIR="$REPO/output"; VENV="${VENV:-$REPO/.venv/venv_nuisflat_ana39}"
 while getopts "i:o:v:t:f:n:m:d:lh" opt; do
   case $opt in
     i) INDIR=$(realpath -m "$OPTARG") ;;
@@ -27,8 +27,12 @@ while getopts "i:o:v:t:f:n:m:d:lh" opt; do
 done
 cd "$REPO"
 
-[ -f "$VENV/bin/activate" ] || { echo "no venv at $VENV -> creating it (one-time)"; ./setup_venv.sh "$VENV"; }
-source "$VENV/bin/activate"
+if [ "$VENV" = "$REPO/.venv/venv_nuisflat_ana39" ]; then
+  set +u; source "$REPO/setup.sh" >/dev/null || exit 1; set -u   # creates it on first use
+else
+  [ -f "$VENV/bin/activate" ] || { echo "ERROR: no venv at $VENV" >&2; exit 1; }
+  set +u; source "$VENV/bin/activate"; set -u
+fi
 if [ $LIST -eq 1 ]; then
   python make_joblist.py ${INDIR:+--indir "$INDIR"} --list
   exit 0
