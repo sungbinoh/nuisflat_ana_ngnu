@@ -53,6 +53,17 @@ def split_csv(s):
     return [x.strip() for x in s.split(",") if x.strip()] if s else []
 
 
+def check_file(path, tree="FlatTree_VARS"):
+    """Return None if the file has a non-empty flat tree, else a reason string."""
+    import uproot
+    try:
+        with uproot.open(path) as f:
+            n = f[tree].num_entries
+        return None if n > 0 else "0 entries"
+    except Exception as e:
+        return f"{type(e).__name__}: {str(e).splitlines()[0]}"
+
+
 def classify(path: Path):
     m = TUNE_RE.search(str(path))
     tune = m.group(1) if m else "unknown"
@@ -74,6 +85,8 @@ def main():
     ap.add_argument("--flavor", default="", help="comma-separated flavor selection")
     ap.add_argument("--files-per-job", type=int, default=0,
                     help="split each group into jobs of at most N files (0 = one job per group)")
+    ap.add_argument("--no-check", action="store_true",
+                    help="skip opening each file to drop empty/corrupt ones (faster)")
     ap.add_argument("--list", action="store_true",
                     help="only print the available (tune, flavor) groups")
     a = ap.parse_args()
@@ -106,6 +119,32 @@ def main():
     if not groups:
         sys.exit(f"ERROR: no groups match --tune '{a.tune}' --flavor '{a.flavor}' "
                  "(see --list)")
+
+    # drop empty/corrupt files so they neither crash jobs nor bias xsec_weight
+    if not a.no_check:
+        try:
+            import uproot  # noqa: F401
+        except ImportError:
+            print("WARNING: uproot not available, cannot check files (activate the venv)")
+            a.no_check = True
+    if not a.no_check:
+        n_all = sum(len(v) for v in groups.values())
+        print(f"checking {n_all} files (use --no-check to skip) ...", flush=True)
+        bad = []
+        for k in list(groups):
+            good = []
+            for f in groups[k]:
+                why = check_file(f)
+                (bad.append((f, why)) if why else good.append(f))
+            groups[k] = good
+        groups = {k: v for k, v in groups.items() if v}
+        if bad:
+            Path("bad_files.txt").write_text("".join(f"{f}\t{w}\n" for f, w in bad))
+            print(f"WARNING: dropped {len(bad)} empty/corrupt files -> bad_files.txt")
+            for f, w in bad[:5]:
+                print(f"   {f}  ({w})")
+        if not groups:
+            sys.exit("ERROR: no valid files left")
     if tunes or flavors:
         print(f"selection: tune={tunes or 'all'} flavor={flavors or 'all'}")
 

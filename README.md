@@ -46,6 +46,11 @@ Split big groups into several jobs (avoids held jobs from memory/disk limits):
 Outputs become `<tune>_<flavor>_partNNN.parquet`. `xsec_weight` still divides by the
 total number of files in the group, so just concatenate all parts (glob below).
 Check why jobs were held with `condor_q -hold`, then `condor_rm <cluster>` and resubmit.
+A hold saying the output parquet is missing means python failed: see `job_log/<cluster>/<tag>.err`.
+
+Empty/corrupt input files (no `FlatTree_VARS`, 0 entries) are dropped by `make_joblist.py`
+and listed in `bad_files.txt`, so they don't crash jobs and aren't counted in
+`xsec_weight`. Re-copy or regenerate them if you need them. `--no-check` skips this check.
 
 Matching: exact, prefix up to `_` (`AR25_20i` → `AR25_20i_01_002`, `numu` → `numu_CC`
 but not `numubar_CC`), or glob. Without `-t`/`-f` everything is submitted.
